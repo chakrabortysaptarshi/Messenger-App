@@ -1,0 +1,194 @@
+<!doctype html>
+<html xmlns="http://www.w3.org/1999/html">
+  <head>
+    <title>Socket.IO chat</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font: 13px Helvetica, Arial; }
+      form { background: pink;width: 100%}
+      #typingNow { padding: 3px; width: 100%;}
+      #onlineUsers { padding: 3px; margin-bottom: 5px}
+      form input { border: 0; padding: 10px; width: 80%; margin-right: .5%; }
+      form button { width: 19%; background: rgb(130, 224, 255); border: none; padding: 10px; }
+      #messages { list-style-type: none; margin: 0; padding: 0; border: 1px black }
+      #messages li { padding: 5px 10px; }
+      #messages li:nth-child(odd) { background: #eee; }
+    </style>
+  </head>
+  <body>
+  <!--
+  <button id="imageButton" onclick="imageSet()">Enter image</button>
+  <canvas id="myCanvas" width="200" height="100" > Your browser does not support the HTML5 canvas tag. </canvas>-->
+  <div style="height: 95vh;width: 100%">
+    <div style="height: 95vh;width: 50%;margin-top: 5vh;float: left">
+      <div id="messageDiv" style="border: 1px solid black;height: 83vh;overflow: auto"><ul id="messages"></ul></div>
+      <div id="typingNow" style="border: 1px solid black;height: 5vh "></div>
+      <div style="border: 1px solid black;height: 7vh"><form action=""><input id="m" autocomplete="off" onkeydown="typingNow()" onkeyup="typingStopped()"/><button>Send</button></form></div>
+    </div>
+
+    <div style="height: 15vh;margin-left:10%;width: 40%;float: left">
+
+      <p id="username"></p><br>
+      <input type="text" id="nickname" autocomplete="off"/>
+      <button id="nicknameButton" onclick="nicknameSet()">Enter name</button>
+      <br>
+      <label>Upload file</label><input type="file"><Button type="submit" onclick="fileUpload()">Upload</Button>
+    </div>
+
+    <div id="emoticon" style="height: 80vh;width: 35%;margin-top: 5vh;float: left;overflow: auto">
+
+    </div>
+    <div style="height: 80vh;width: 15%;margin-top: 5vh;float: left">
+      <div id = "onlineUsers" >Online users : <br></div>
+    </div>
+
+  <!--<p id="typingNow"></p>-->
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="http://code.jquery.com/jquery-1.11.1.js"></script>
+    <script>
+        var socket = io();
+        var count=0;
+        var delivery = new Delivery(socket);
+
+        function  fileUpload() {
+            var file = $("input[type=file]")[0].files[0];
+            alert('clicked' + file.name);
+
+            var extraParams = {foo: 'bar'};
+            delivery.send(file, extraParams);
+            evt.preventDefault();
+        }
+        function typingNow() {
+            if(!$('#username').is(':empty'))
+                socket.emit('typing now');
+        }
+
+        function typingStopped() {
+            if(!$('#username').is(':empty'))
+                socket.emit('typing stopped');
+        }
+
+        function nicknameSet(){
+            socket.emit('nickname', $('#nickname').val());
+            $('#nickname').val('');
+            return false;
+        }
+
+        function imageSet() {
+            socket.emit('image request', $('#nickname').val());
+        }
+
+        function emoticonClick(val) {
+            var selected = [];
+            $('#onlineUsers input:checked').each(function() {
+                selected.push($(this).attr('name'));
+            });
+            if(selected.length == 0)
+                socket.emit('image send', {imageName: val});
+            else
+                socket.emit('image send', {imageName: val, users: selected.join(",")});
+        }
+
+        $('form').submit(function() {
+            var selected = [];
+            $('#onlineUsers input:checked').each(function() {
+                selected.push($(this).attr('name'));
+            });
+            //alert(selected);
+            $('#messages').append('<li title="'+new Date().toLocaleTimeString()+'" style="float: right;clear: both">'+$('#m').val() +'</li>');
+            if(selected.length == 0)
+                socket.emit('chat message',{content: $('#m').val()});
+            else
+                socket.emit('chat message',{content: $('#m').val(), users: selected.join(",")});
+            $('#m').val('');
+            return false;
+        });
+
+        socket.on('chat message', function(msg) {
+            $('#messages').append('<li title="'+new Date().toLocaleTimeString()+'" style="float: left;clear: both">'+msg+'</li>');
+        });
+
+        socket.on('new user welcome', function(data) {
+            $('#messages').append($('<li>').text("new user joined" + new Date().toLocaleTimeString()));
+        });
+
+        socket.on('nickname', function(data) {
+
+            $('#messages').append($('<li>').text(data+" joined" + new Date().toLocaleTimeString()));
+            var container = $('#onlineUsers');
+            $('<label id="user'+data+'"><input type ="checkbox" id="'+data+'" name="'+data+'" />  &nbsp;&nbsp; '+data+'</label><br>').appendTo(container);
+            //$('<label />', { text: ' &nbsp;&nbsp;&nbsp;&nbsp; '+data }).appendTo(container);
+        });
+
+        socket.on('name set', function (data) {
+            $('#username').append("User name : "+data);
+        });
+
+        socket.on('typing now', function (data) {
+            $('#typingNow').text(data+ "  is typing now......");
+        });
+
+        socket.on('typing stopped', function (data) {
+            $('#typingNow').text('');
+        });
+
+        socket.on('image receive', function(data) {
+            var uint8Arr = new Uint8Array(data);
+            var binary = '';
+            for (var i = 0; i < uint8Arr.length; i++) {
+                binary += String.fromCharCode(uint8Arr[i]);
+            }
+            var base64String = window.btoa(binary);
+
+            var img = new Image();
+            img.src = 'data:image/png;base64,' + base64String;
+            $('#messages').append('<li title="'+new Date().toLocaleTimeString()+'" style="float: left;clear: both"><img src="'+img.src+'"/></li>');
+            //$('#messages').append('<img src="'+img.src+'"/>');
+        });
+
+        socket.on('selfImage receive', function(data) {
+            var uint8Arr = new Uint8Array(data);
+            var binary = '';
+            for (var i = 0; i < uint8Arr.length; i++) {
+                binary += String.fromCharCode(uint8Arr[i]);
+            }
+            var base64String = window.btoa(binary);
+
+            var img = new Image();
+            img.src = 'data:image/png;base64,' + base64String;
+            $('#messages').append('<li title="'+new Date().toLocaleTimeString()+'" style="float: right;clear: both"><img src="'+img.src+'"/></li>');
+            //$('#messages').append('<img src="'+img.src+'"/>');
+        });
+
+        socket.on('image', function(data) {
+            var uint8Arr = new Uint8Array(data.buffer);
+            var binary = '';
+            for (var i = 0; i < uint8Arr.length; i++) {
+                binary += String.fromCharCode(uint8Arr[i]);
+            }
+            var base64String = window.btoa(binary);
+            count +=1;
+            var cid = data.imageId;
+            var img = new Image();
+            img.src = 'data:image/png;base64,' + base64String;
+            $('#emoticon').append('<a id="'+cid+'" onclick="emoticonClick(this.id)" href="#"><img id="'+cid+'" src="'+img.src+'"/></a>')
+        });
+
+        socket.on('user offline', function (data) {
+            $("input:checkbox").each(function(){
+                var $this = $(this);
+                if($this.attr("id") == data) {
+                    $("#user"+data).remove();
+                }
+            });
+        });
+
+        delivery.on('send.success',function(fileUID){
+            console.log("file was successfully sent.");
+        });
+    </script>
+  </body>
+</html>
